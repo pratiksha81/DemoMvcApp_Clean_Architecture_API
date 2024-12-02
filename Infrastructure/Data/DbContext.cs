@@ -1,5 +1,5 @@
 ﻿using DemoMvcApp.Models;
-using Domain.Entities.Models;
+//using Domain.Entities.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace DemoMvcApp.Data
@@ -14,7 +14,8 @@ namespace DemoMvcApp.Data
         public DbSet<Product> Products { get; set; }// it creates Product named database table on database
         public DbSet<User> Users { get; set; }// it creates User named database table on database
 
-        public DbSet<Inventory> Inventories { get; set; }
+       // public DbSet<Inventory> Inventories { get; set; } // it creates Inventory named database table on database
+
     }
 
 }

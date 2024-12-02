@@ -11,74 +11,60 @@ using Microsoft.OpenApi.Models;
 using System.Reflection;
 using System.Text;
 using DemoMvcApp.Infrastructure;
-
-
+using Infrastructure.Data;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Use builder here, such as configuring services
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
 // Load configuration from appsettings.json
 var databaseProvider = builder.Configuration["DatabaseProvider"];
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-        options.UseSqlServer(connectionString));
+    options.UseSqlServer(connectionString));
 
+builder.Services.AddScoped<DatabaseConfig>();
 
-// Add services to the container.
+// Add services to the container
 builder.Services.AddControllersWithViews();
 
 // Register the IProductRepository with DI container
 builder.Services.AddScoped<IProductRepository, ProductRepository>();
-
-builder.Services.AddScoped<IProductService, ProductService> ();
+builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped(typeof(IErrorHandlingService<>), typeof(ErrorHandlingService<>));
 
 builder.Services.AddScoped<CreateProductCommandHandler>();
-builder.Services.AddScoped<IMapper, Mapper>(); // Registering the Mapper 
+builder.Services.AddScoped<IMapper, Mapper>(); // Registering the Mapper
 
 builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<JwtTokenHelper>();  // Register the JwtTokenHelper class
+builder.Services.AddScoped<JwtTokenHelper>(); // Register the JwtTokenHelper class
 
-
-//   MediateR
-
-builder.Services.AddControllersWithViews();
-
-//version ko error le sir ko hatayera yo rakheko
-builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly())); // Register MediatR
-
-//builder.Services.AddControllersWithViews();
-//builder.Services.AddMediatR(Assembly.GetExecutingAssembly());
-//builder.Services.AddScoped<IProductRepository, ProductRepository>(); // Register repository
-// Other service registrations
-
-
-
-
+// Register MediatR
+builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly()));
 
 // Add Swagger services to the DI container
 builder.Services.AddSwaggerGen();
-
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "DemoMvcApp", Version = "v1" });
 });
 
-// Configure CORS to allow any origin, method, and header.
+// Configure CORS to allow any origin, method, and header
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAllOrigins",
-        builder =>
-        {
-            builder.AllowAnyOrigin()
-                   .AllowAnyMethod()
-                   .AllowAnyHeader();
-        });
+    options.AddPolicy("AllowAllOrigins", builder =>
+    {
+        builder.AllowAnyOrigin()
+               .AllowAnyMethod()
+               .AllowAnyHeader();
+    });
 });
 
-
-
-
-
+// Configure Authentication and Authorization
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -103,19 +89,18 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
 });
 
-
-
 var app = builder.Build();
+
 // Use CORS before routing or authorization middleware
 app.UseCors("AllowAllOrigins");
 
-// Configure the HTTP request pipeline.
+// Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
-    // Enable middleware to serve generated Swagger as a JSON endpoint.
+    // Enable middleware to serve generated Swagger as a JSON endpoint
     app.UseSwagger();
 
-    // Enable middleware to serve Swagger UI.
+    // Enable middleware to serve Swagger UI
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "My API V1");

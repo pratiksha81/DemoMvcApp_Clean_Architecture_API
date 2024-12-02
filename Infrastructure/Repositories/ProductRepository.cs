@@ -1,49 +1,49 @@
-﻿using DemoMvcApp.Data;
+﻿using Dapper;
+using DemoMvcApp.Data;
 using DemoMvcApp.Handler;
 using DemoMvcApp.Models;
-
-
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage; // Required for transactions
-using System;
-using System.Threading.Tasks;
-
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
+using Infrastructure.Data;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Configuration;
+using System.Data; // Required for transactions
 
 namespace DemoMvcApp.Infrastructure
 {
-    public class ProductRepository : IProductRepository
+    /*public class ProductRepository : IProductRepository
     {
-        private readonly ApplicationDbContext _context;
-        private readonly IErrorHandlingService<string> _errorHandlingService;
+        private readonly DatabaseConfig DBConfig;
+         private readonly IErrorHandlingService<string> _errorHandlingService;
 
-        public ProductRepository(ApplicationDbContext context, IErrorHandlingService<string> errorHandlingService)
+        public ProductRepository(DatabaseConfig context, IErrorHandlingService<string> errorHandlingService)
         {
-            _context = context;
+            DBConfig = context;
             _errorHandlingService = errorHandlingService;
         }
 
-        public IEnumerable<Product> GetAllProducts()
+        public async Task<IEnumerable<Product>> GetAllProducts()
         {
             try
             {
-                return _context.Products.ToList();
+                using var connection = DBConfig.CreateConnection(); // Ensure connection is properly initialized
+                return await connection.QueryAsync<Product>(
+                    "spGetAllProducts",
+                    commandType: CommandType.StoredProcedure
+                );
             }
             catch (Exception ex)
             {
-                _errorHandlingService.SetError(ex.Message);
+                _errorHandlingService.SetError($"Error fetching products: {ex.Message}");
                 throw;
             }
         }
+
 
         public Product GetProductById(int id)
         {
             try
             {
-                return _context.Products.Find(id);
+                return .Products.Find(id);
             }
             catch (Exception ex)
             {
@@ -54,104 +54,179 @@ namespace DemoMvcApp.Infrastructure
 
         public void AddProduct(Product product)
         {
+            using var transaction = DBConfig.Database.BeginTransaction();
             try
             {
-                _context.Products.Add(product);
-                Save();
+                DBConfig.Products.Add(product);
+                DBConfig.SaveChanges();
+                 transaction.Commit();
             }
             catch (Exception ex)
             {
-                _errorHandlingService.SetError(ex.Message);
+                transaction.Rollback();
+                _errorHandlingService.SetError($"Error adding product: {ex.Message}");
                 throw;
             }
         }
 
         public void UpdateProduct(int id, Product product)
         {
+            using var transaction = DBConfig.Database.BeginTransaction();
             try
             {
-                var existingProduct = _context.Products.Find(id);
-
-                if (existingProduct != null)
+                var existingProduct = DBConfig.Products.Find(id);
+                if (existingProduct == null)
                 {
-                    existingProduct.Name = product.Name;
-                    existingProduct.Price = product.Price;
-                    Save();
+                    throw new Exception($"Product with ID {id} not found.");
                 }
+
+                existingProduct.Name = product.Name;
+                existingProduct.Price = product.Price;
+
+                DBConfig.Products.Update(existingProduct);
+                DBConfig.SaveChanges();
+                 transaction.Commit();
             }
             catch (Exception ex)
             {
-                _errorHandlingService.SetError(ex.Message);
+                 transaction.Rollback();
+                _errorHandlingService.SetError($"Error updating product: {ex.Message}");
                 throw;
             }
         }
 
         public void DeleteProduct(int id)
         {
+            using var transaction = DBConfig.Database.BeginTransaction();
             try
             {
-                var product = _context.Products.Find(id);
-                if (product != null)
+                var product = DBConfig.Products.Find(id);
+                if (product == null)
                 {
-                    _context.Products.Remove(product);
-                    Save();
+                    throw new Exception($"Product with ID {id} not found.");
                 }
+
+                DBConfig.Products.Remove(product);
+                DBConfig.SaveChanges();
+                transaction.Commit();
             }
             catch (Exception ex)
             {
-                _errorHandlingService.SetError(ex.Message);
+                transaction.Rollback();
+                _errorHandlingService.SetError($"Error deleting product: {ex.Message}");
                 throw;
             }
         }
+       
+    }*/
 
-        private void Save()
+
+
+
+
+
+
+
+
+
+
+
+
+
+    public class ProductRepository : IProductRepository
+    {
+        private readonly string _connectionString;
+
+        public ProductRepository(IConfiguration configuration)
         {
-            try
+            _connectionString = configuration.GetConnectionString("DefaultConnection");
+        }
+
+        public IEnumerable<Product> GetAllProducts()
+        {
+            using (var connection = new SqlConnection(_connectionString))
             {
-                _context.SaveChanges();
-            }
-            catch (Exception ex)
-            {
-                _errorHandlingService.SetError(ex.Message);
-                throw;
+                var parameters = new DynamicParameters();
+                parameters.Add("@flag", "SE");
+
+                return connection.Query<Product>(
+                    "SP_Product",
+                    parameters,
+                    commandType: CommandType.StoredProcedure);
             }
         }
 
-        // fpor data base operation
-        public async Task<bool> ProcessOrderAsync(Product product, int inventoryCountChange)
+        public Product GetProductById(int productId)
         {
-            using (IDbContextTransaction transaction = await _context.Database.BeginTransactionAsync())
+            using (var connection = new SqlConnection(_connectionString))
             {
-                try
-                {
-                    // Add the product
-                    await _context.Products.AddAsync(product);
+                var parameters = new DynamicParameters();
+                parameters.Add("@flag", "SE");
+                parameters.Add("@ProductID", productId);
 
-                    // Update the inventory
-                    var inventory = await _context.Inventories.FirstOrDefaultAsync(i => i.Id == product.Id);
-                    if (inventory == null)
-                    {
-                        throw new Exception("Inventory record not found.");
-                    }
-
-                    inventory.Count += inventoryCountChange;
-                    _context.Inventories.Update(inventory);
-
-                    // Commit the transaction
-                    await _context.SaveChangesAsync();
-                    await transaction.CommitAsync();
-
-                    return true; // Operation succeeded
-                }
-                catch (Exception)
-                {
-                    await transaction.RollbackAsync();
-                    return false; // Operation failed
-                }
+                return connection.QueryFirstOrDefault<Product>(
+                    "SP_Product",
+                    parameters,
+                    commandType: CommandType.StoredProcedure);
             }
         }
 
+        public string AddProduct(Product product)
+        {
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                var parameters = new DynamicParameters();
+                parameters.Add("@flag", "I");
+                parameters.Add("@ProductID", product.Id);
+                parameters.Add("@Name", product.Name);
+                parameters.Add("@Price", product.Price);
+                parameters.Add("@ImageUrl", product.ProductImage);
 
+                var result = connection.QueryFirstOrDefault<dynamic>(
+                    "SP_Product",
+                    parameters,
+                    commandType: CommandType.StoredProcedure);
+
+                return result?.Msg ?? "Operation failed.";
+            }
+        }
+
+        public string UpdateProduct(int productId, Product product)
+        {
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                var parameters = new DynamicParameters();
+                parameters.Add("@flag", "U");
+                parameters.Add("@ProductID", productId);
+                parameters.Add("@Name", product.Name);
+                parameters.Add("@Price", product.Price);
+                parameters.Add("@ImageUrl", product.ProductImage);
+
+                var result = connection.QueryFirstOrDefault<dynamic>(
+                    "SP_Product",
+                    parameters,
+                    commandType: CommandType.StoredProcedure);
+
+                return result?.Msg ?? "Operation failed.";
+            }
+        }
+
+        public string DeleteProduct(int productId)
+        {
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                var parameters = new DynamicParameters();
+                parameters.Add("@flag", "D");
+                parameters.Add("@ProductID", productId);
+
+                var result = connection.QueryFirstOrDefault<dynamic>(
+                    "SP_Product",
+                    parameters,
+                    commandType: CommandType.StoredProcedure);
+
+                return result?.Msg ?? "Operation failed.";
+            }
+        }
     }
-}
 
+}
